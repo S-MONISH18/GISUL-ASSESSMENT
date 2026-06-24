@@ -1,0 +1,328 @@
+{
+  "project": {
+    "name": "FlashMind – Smart Flashcard Generator",
+    "version": "1.0.0",
+    "assignment": "Option A – EdTech Hiring Assignment",
+    "domain": "EdTech / NLP",
+    "stack": {
+      "frontend": "Next.js 15 (App Router) + Tailwind CSS",
+      "backend": "FastAPI (Python 3.11)",
+      "database": "MongoDB Atlas (Free Tier)",
+      "ai_ml": [
+        "spaCy (en_core_web_sm) – keyword & entity extraction",
+        "Hugging Face Transformers – valhalla/t5-small-qg-prepend – question generation",
+        "NLTK – sentence tokenization & ranking"
+      ],
+      "auth": "JWT (python-jose) + bcrypt password hashing",
+      "deployment": {
+        "frontend": "Vercel",
+        "backend": "Render (free tier)",
+        "database": "MongoDB Atlas"
+      }
+    }
+  },
+
+  "architecture": {
+    "pattern": "Decoupled SPA + REST API",
+    "frontend_port": 3000,
+    "backend_port": 8000,
+    "api_prefix": "/api/v1",
+    "cors": ["http://localhost:3000", "https://your-vercel-app.vercel.app"]
+  },
+
+  "folder_structure": {
+    "root": "flashmind/",
+    "frontend": {
+      "base": "flashmind/frontend/",
+      "key_files": [
+        "app/page.tsx                  → Landing / redirect",
+        "app/(auth)/login/page.tsx     → Login form",
+        "app/(auth)/signup/page.tsx    → Signup form",
+        "app/dashboard/page.tsx        → All flashcard sets",
+        "app/generate/page.tsx         → Paste notes → generate flashcards",
+        "app/review/[setId]/page.tsx   → Flashcard review session",
+        "lib/api.ts                    → Axios instance with JWT header",
+        "lib/auth.ts                   → Token storage helpers",
+        "components/FlashCard.tsx      → Flip card UI component",
+        "components/Navbar.tsx"
+      ]
+    },
+    "backend": {
+      "base": "flashmind/backend/",
+      "key_files": [
+        "main.py                       → FastAPI app entry",
+        "routers/auth.py               → /signup, /login",
+        "routers/flashcards.py         → /generate, /sets, /review",
+        "services/nlp_service.py       → Core AI/ML pipeline",
+        "services/auth_service.py      → JWT + bcrypt logic",
+        "models/user.py                → Pydantic + Mongo models",
+        "models/flashcard.py",
+        "db/mongo.py                   → MongoDB Atlas connection",
+        "config.py                     → ENV vars",
+        "requirements.txt"
+      ]
+    }
+  },
+
+  "database_schema": {
+    "collections": {
+      "users": {
+        "fields": {
+          "_id": "ObjectId",
+          "email": "string (unique, indexed)",
+          "password_hash": "string (bcrypt)",
+          "created_at": "datetime"
+        }
+      },
+      "flashcard_sets": {
+        "fields": {
+          "_id": "ObjectId",
+          "user_id": "ObjectId (ref: users)",
+          "title": "string (auto-generated from topic)",
+          "raw_notes": "string",
+          "created_at": "datetime",
+          "card_count": "int"
+        }
+      },
+      "flashcards": {
+        "fields": {
+          "_id": "ObjectId",
+          "set_id": "ObjectId (ref: flashcard_sets)",
+          "user_id": "ObjectId (ref: users)",
+          "question": "string",
+          "answer": "string",
+          "status": "enum: ['new', 'known', 'not_known']",
+          "review_weight": "float (default: 1.0)",
+          "last_reviewed": "datetime | null",
+          "review_count": "int (default: 0)"
+        }
+      }
+    }
+  },
+
+  "api_endpoints": {
+    "auth": {
+      "POST /api/v1/auth/signup": {
+        "body": { "email": "string", "password": "string" },
+        "response": { "message": "User created", "user_id": "string" },
+        "logic": "Hash password with bcrypt, store user, return 201"
+      },
+      "POST /api/v1/auth/login": {
+        "body": { "email": "string", "password": "string" },
+        "response": { "access_token": "string", "token_type": "bearer" },
+        "logic": "Verify bcrypt hash, issue JWT with 24h expiry"
+      }
+    },
+    "flashcards": {
+      "POST /api/v1/flashcards/generate": {
+        "auth": "Bearer JWT required",
+        "body": { "notes": "string (min 100 chars, max 3000 chars)" },
+        "response": {
+          "set_id": "string",
+          "title": "string",
+          "flashcards": [
+            { "id": "string", "question": "string", "answer": "string" }
+          ]
+        },
+        "logic": "Run nlp_service.generate_flashcards(notes), save to DB, return cards"
+      },
+      "GET /api/v1/flashcards/sets": {
+        "auth": "Bearer JWT required",
+        "response": {
+          "sets": [
+            {
+              "set_id": "string",
+              "title": "string",
+              "card_count": "int",
+              "created_at": "string"
+            }
+          ]
+        }
+      },
+      "GET /api/v1/flashcards/sets/{set_id}": {
+        "auth": "Bearer JWT required",
+        "response": {
+          "set_id": "string",
+          "title": "string",
+          "flashcards": [
+            {
+              "id": "string",
+              "question": "string",
+              "answer": "string",
+              "status": "string",
+              "review_weight": "float"
+            }
+          ]
+        },
+        "logic": "Return cards ordered by review_weight DESC (not_known cards first)"
+      },
+      "PATCH /api/v1/flashcards/{card_id}/review": {
+        "auth": "Bearer JWT required",
+        "body": { "status": "known | not_known" },
+        "response": { "updated": true, "new_weight": "float" },
+        "logic": [
+          "If status = 'known'    → review_weight = max(0.5, weight - 0.2)",
+          "If status = 'not_known' → review_weight = min(3.0, weight + 0.5)",
+          "Update last_reviewed = now(), review_count += 1"
+        ]
+      }
+    }
+  },
+
+  "ai_ml_pipeline": {
+    "file": "backend/services/nlp_service.py",
+    "function": "generate_flashcards(notes: str) -> list[dict]",
+    "steps": {
+      "step_1_preprocess": {
+        "tool": "NLTK sent_tokenize",
+        "action": "Split raw notes into individual sentences",
+        "output": "List[str] of sentences"
+      },
+      "step_2_entity_extraction": {
+        "tool": "spaCy en_core_web_sm",
+        "action": "Run NER on each sentence, extract PERSON, ORG, GPE, DATE, CONCEPT entities",
+        "output": "Dict[sentence → List[entity]]"
+      },
+      "step_3_keyword_extraction": {
+        "tool": "spaCy noun chunks + POS tagging",
+        "action": "Extract noun phrases (NN, NNS, NNP) as key terms per sentence",
+        "output": "Dict[sentence → List[keyword]]"
+      },
+      "step_4_sentence_ranking": {
+        "tool": "TF-IDF (sklearn TfidfVectorizer)",
+        "action": "Score all sentences by TF-IDF weight sum; select top N sentences as card sources",
+        "output": "List[top_sentences] (N = min(10, len(sentences)))"
+      },
+      "step_5_qa_generation": {
+        "tool": "Hugging Face pipeline – valhalla/t5-small-qg-prepend",
+        "action": [
+          "For each top sentence:",
+          "  Input format: 'generate question: {sentence} </s>'",
+          "  Model outputs a question string",
+          "  Answer = the original sentence (trimmed)"
+        ],
+        "fallback": "If model confidence < threshold, use template: 'What is {top_keyword}?' → answer = sentence",
+        "output": "List[{question: str, answer: str}]"
+      },
+      "step_6_dedup_filter": {
+        "action": "Remove duplicate or near-duplicate Q&A pairs using string similarity (difflib SequenceMatcher > 0.85 = duplicate)",
+        "output": "Final cleaned List[{question, answer}]"
+      },
+      "step_7_title_generation": {
+        "tool": "spaCy most_common entity/noun chunk",
+        "action": "Use most frequent noun phrase across all sentences as set title",
+        "example": "Notes about photosynthesis → title: 'Photosynthesis'"
+      }
+    },
+    "model_loading": "Load spaCy and HF pipeline once at app startup using @app.on_event('startup') to avoid cold-start lag per request"
+  },
+
+  "review_algorithm": {
+    "name": "Weighted Spaced Repetition (Simplified SM-2)",
+    "logic": {
+      "initial_weight": 1.0,
+      "on_known": "weight = max(0.5, weight - 0.2)",
+      "on_not_known": "weight = min(3.0, weight + 0.5)",
+      "review_order": "Sort cards by review_weight DESC when fetching review session",
+      "effect": "Not-known cards surface more frequently; known cards reduce in frequency"
+    }
+  },
+
+  "frontend_pages": {
+    "signup_login": {
+      "route": "/signup, /login",
+      "ui": "Email + password form, JWT stored in localStorage",
+      "validation": "Email format, password min 8 chars"
+    },
+    "dashboard": {
+      "route": "/dashboard",
+      "ui": "Grid of flashcard set cards showing title, card count, date created, Review button"
+    },
+    "generate": {
+      "route": "/generate",
+      "ui": [
+        "Large textarea for pasting notes",
+        "Character counter (100–3000)",
+        "Generate button → loading spinner while API processes",
+        "Preview generated cards before saving"
+      ]
+    },
+    "review": {
+      "route": "/review/[setId]",
+      "ui": [
+        "Flip card animation (CSS 3D transform)",
+        "Front: Question | Back: Answer",
+        "Click to flip",
+        "Known / Not Known buttons below card",
+        "Progress bar: X of N cards reviewed",
+        "Session complete screen with known vs not-known count"
+      ]
+    }
+  },
+
+  "auth_flow": {
+    "signup": "POST /auth/signup → hash password (bcrypt, rounds=12) → store user → 201",
+    "login": "POST /auth/login → verify hash → issue JWT (HS256, 24h) → return token",
+    "protected_routes": "FastAPI Depends(get_current_user) on all /flashcards/* routes",
+    "frontend": "Axios interceptor attaches Authorization: Bearer <token> to every request"
+  },
+
+  "deployment_guide": {
+    "backend_render": {
+      "build_command": "pip install -r requirements.txt && python -m spacy download en_core_web_sm",
+      "start_command": "uvicorn main:app --host 0.0.0.0 --port 8000",
+      "env_vars": ["MONGODB_URI", "JWT_SECRET", "ENVIRONMENT=production"],
+      "note": "Use Render free tier – expect ~50s cold start; preload models at startup"
+    },
+    "frontend_vercel": {
+      "env_vars": ["NEXT_PUBLIC_API_URL=https://your-render-app.onrender.com"],
+      "build": "next build",
+      "note": "Auto-deploys on git push to main"
+    }
+  },
+
+  "requirements_txt": [
+    "fastapi==0.111.0",
+    "uvicorn==0.29.0",
+    "pymongo==4.7.2",
+    "motor==3.4.0",
+    "python-jose[cryptography]==3.3.0",
+    "bcrypt==4.1.3",
+    "passlib==1.7.4",
+    "pydantic==2.7.1",
+    "spacy==3.7.4",
+    "nltk==3.8.1",
+    "scikit-learn==1.4.2",
+    "transformers==4.40.2",
+    "torch==2.3.0",
+    "sentencepiece==0.2.0",
+    "python-dotenv==1.0.1",
+    "python-multipart==0.0.9"
+  ],
+
+  "readme_template": {
+    "sections": [
+      "## Option Chosen: Option A – Smart Flashcard Generator",
+      "## Tech Stack: Next.js 15 + FastAPI + MongoDB Atlas",
+      "## Local Setup: (frontend: npm install && npm run dev) (backend: pip install -r requirements.txt && uvicorn main:app --reload)",
+      "## AI/ML Explanation: spaCy extracts key entities and noun phrases from input notes. NLTK tokenizes sentences. TF-IDF ranks the most informative sentences. valhalla/t5-small-qg-prepend generates natural language questions from each top sentence. Answers are the source sentences. Duplicates are removed via SequenceMatcher."
+    ]
+  },
+
+  "test_cases": {
+    "nlp_pipeline": [
+      {
+        "name": "Biology notes test",
+        "input": "Photosynthesis is the process by which plants use sunlight, water, and carbon dioxide to produce oxygen and energy in the form of glucose. Chlorophyll is the pigment in plants that absorbs light. The process occurs in the chloroplasts of plant cells.",
+        "expected_cards_min": 2,
+        "expected_entities": ["Photosynthesis", "Chlorophyll", "chloroplasts"]
+      }
+    ],
+    "api": [
+      { "test": "Signup with duplicate email → 400" },
+      { "test": "Login with wrong password → 401" },
+      { "test": "Generate with < 100 chars → 422 validation error" },
+      { "test": "Access /sets without JWT → 401" }
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+services:
+  # 1. Flask Backend (Web Service)
+  - type: web
+    name: smart-flashcard-backend
+    env: python
+    rootDir: backend
+    buildCommand: "pip install -r requirements.txt && python -m nltk.downloader punkt averaged_perceptron_tagger"
+    startCommand: "gunicorn main:app"
+    envVars:
+      - key: MONGODB_URI
+        sync: false # You will enter this in the Render dashboard during deploy
+      - key: JWT_SECRET
+        sync: false # You will enter this in the Render dashboard during deploy
+      - key: PYTHON_VERSION
+        value: 3.11.5
+
+  # 2. Vite React Frontend (Static Site)
+  - type: web
+    name: smart-flashcard-frontend
+    env: static
+    buildCommand: "npm install && npm run build"
+    publishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: smart-flashcard-backend
+          property: host
