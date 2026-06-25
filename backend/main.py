@@ -36,11 +36,19 @@ TOKEN_TTL_H = 24
 
 # ── App & CORS ─────────────────────────────────────────────────────────────
 app = Flask(__name__)
-CORS(app, origins=[
-    "http://localhost:5173",
-    "http://localhost:3000",
-    "https://your-vercel-app.vercel.app",
-])
+
+# Load allowed origins from environment variable (comma-separated), falling back to local dev URLs
+origins_env = os.getenv("ALLOWED_ORIGINS")
+if origins_env:
+    allowed_origins = [o.strip() for o in origins_env.split(",") if o.strip()]
+else:
+    allowed_origins = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "https://your-vercel-app.vercel.app",
+    ]
+
+CORS(app, origins=allowed_origins)
 
 # ── DB ─────────────────────────────────────────────────────────────────────
 client = MongoClient(MONGODB_URI)
@@ -57,11 +65,20 @@ _NLTK_PKGS = [
     ("taggers/averaged_perceptron_tagger_eng", "averaged_perceptron_tagger_eng"),
     ("corpora/stopwords",                  "stopwords"),
 ]
+
+# Set a writable directory for NLTK data in serverless environments
+_nltk_data_dir = "/tmp/nltk_data"
+if _nltk_data_dir not in nltk.data.path:
+    nltk.data.path.append(_nltk_data_dir)
+
 for path, pkg in _NLTK_PKGS:
     try:
         nltk.data.find(path)
     except LookupError:
-        nltk.download(pkg, quiet=True)
+        try:
+            nltk.download(pkg, download_dir=_nltk_data_dir, quiet=True)
+        except Exception:
+            nltk.download(pkg, quiet=True)
 
 from nltk.corpus import stopwords as _sw
 STOP_WORDS = set(_sw.words("english"))

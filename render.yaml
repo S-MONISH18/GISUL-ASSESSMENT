@@ -11,18 +11,7 @@ services:
         sync: false # You will enter this in the Render dashboard during deploy
       - key: JWT_SECRET
         sync: false # You will enter this in the Render dashboard during deploy
+      - key: ALLOWED_ORIGINS
+        sync: false # You will enter the Vercel app URL here
       - key: PYTHON_VERSION
         value: 3.11.5
-
-  # 2. Vite React Frontend (Static Site)
-  - type: web
-    name: smart-flashcard-frontend
-    env: static
-    buildCommand: "npm install && npm run build"
-    publishPath: dist
-    envVars:
-      - key: VITE_API_URL
-        fromService:
-          type: web
-          name: smart-flashcard-backend
-          property: host
