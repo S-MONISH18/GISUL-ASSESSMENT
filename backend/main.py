@@ -22,6 +22,7 @@ from bson.errors import InvalidId
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from dotenv import load_dotenv
+import certifi
 
 import nltk
 from nltk import pos_tag, word_tokenize, RegexpParser, sent_tokenize
@@ -44,7 +45,7 @@ allowed_origins = [o.strip() for o in origins_env.split(",") if o.strip()]
 CORS(app, origins=allowed_origins)
 
 # ── DB ─────────────────────────────────────────────────────────────────────
-client = MongoClient(MONGODB_URI)
+client = MongoClient(MONGODB_URI, tlsCAFile=certifi.where())
 db     = client["flashmind_db"]
 
 # ── Password hashing ───────────────────────────────────────────────────────
